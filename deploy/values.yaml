@@ -1,0 +1,39 @@
+image: registry.cn-hangzhou.aliyuncs.com/lin2ur/hpa-app:1724143858
+
+redis:
+  image: redis:7.2-alpine
+
+k6:
+  image: grafana/k6:0.52.0
+  stages:
+    - duration: '1m'
+      target: 100
+    - duration: '1m'
+      target: 500
+    - duration: 2m
+      target: 500
+    - duration: '2m'
+      target: 0
+
+prometheus-adapter:
+  logLevel: 9
+  prometheus:
+    url: http://kube-prometheus-stack-prometheus.kube-prometheus-stack
+  rules:
+    default: false
+    custom:
+      - seriesQuery: '{__name__="hpa_app_consume_count"}'
+        resources:
+          overrides:
+            namespace: { resource: "namespaces" }
+            pod: { resource: "pods" }
+        name:
+          as: hpa_app_consume_per_second
+          matches: ''
+        metricsQuery: "sum by (<<.GroupBy>>) (rate(<<.Series>>{<<.LabelMatchers>>}[30s]))"
+    external:
+      - seriesQuery: '{__name__="hpa_app_queue_length"}'
+        resources:
+          overrides:
+            namespace: { resource: "namespace" }
+        metricsQuery: "sum by (queue_name) (<<.Series>>{<<.LabelMatchers>>})"
