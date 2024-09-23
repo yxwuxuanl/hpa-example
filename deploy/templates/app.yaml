@@ -1,0 +1,63 @@
+{{- range $_, $isProducer := list true false }}
+{{- $name := ternary "producer" "consumer" $isProducer }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $.Release.Name }}-{{ $name }}
+  labels:
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/name: {{ $name }}
+spec:
+  replicas: {{ ternary 1 2 $isProducer }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+      app.kubernetes.io/name: {{ $name }}
+  template:
+    metadata:
+      name: {{ $.Release.Name }}-{{ $name }}
+      labels:
+        app.kubernetes.io/instance: {{ $.Release.Name }}
+        app.kubernetes.io/name: {{ $name }}
+    spec:
+      containers:
+        - name: {{ $name }}
+          image: {{ $.Values.image }}
+          imagePullPolicy: IfNotPresent
+          args:
+            - {{ $name }}
+            - --redis.host={{ $.Release.Name }}-redis.{{ $.Release.Namespace }}:6379
+            - --redis.queue-name={{ $.Release.Name }}
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+              name: http
+      restartPolicy: Always
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/instance: {{ $.Release.Name }}
+                    app.kubernetes.io/name: redis
+              weight: 100
+---
+{{- if $isProducer }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $.Release.Name }}-{{ $name }}
+spec:
+  selector:
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/name: {{ $name }}
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: http
+  type: ClusterIP
+---
+{{- end }}
+{{- end }}

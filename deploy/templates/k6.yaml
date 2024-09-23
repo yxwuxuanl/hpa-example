@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-k6
+data:
+  script.js: |
+    import http from 'k6/http';
+    import {sleep} from 'k6';
+
+    export const options = {
+        discardResponseBodies: true,
+        stages: {{ toJson .Values.k6.stages }}
+    }
+
+    export default () => {
+        http.post('http://{{ .Release.Name }}-producer.{{ .Release.Namespace }}');
+        sleep(1);
+    }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-k6
+  annotations:
+    "helm.sh/hook": test
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 60
+  template:
+    spec:
+      restartPolicy: Never
+      volumes:
+        - name: script
+          configMap:
+            name: {{ .Release.Name }}-k6
+      containers:
+        - name: k6
+          imagePullPolicy: IfNotPresent
+          image: {{ .Values.k6.image }}
+          volumeMounts:
+            - mountPath: /script.js
+              name: script
+              subPath: script.js
+          command:
+            - k6
+            - run
+            - /script.js
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/instance: {{ .Release.Name }}
+                    app.kubernetes.io/name: producer
+              weight: 100
