@@ -16,6 +16,7 @@ k6:
       target: 0
 
 prometheus-adapter:
+  enabled: false
   logLevel: 9
   prometheus:
     url: http://kube-prometheus-stack-prometheus.kube-prometheus-stack
